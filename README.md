@@ -109,4 +109,4 @@ agent 默认读取 `~/.local/state/codex-cli-update/status.json`、`~/.local/sta
 
 公网暴露、无认证访问、自动信任新设备、任意命令执行、Docker 透传和任意 URL 代理均不在本项目第一阶段范围内。
 
-实际验证结果见 `VALIDATION.md`。
+本机验收记录独立保存在 `/home/shiki/文档/code/shiki-console/VALIDATION.md`，不随源码继续维护。
