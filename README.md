@@ -6,8 +6,8 @@
 
 | 设备 | 位置 | 角色 | 当前接入范围 |
 | --- | --- | --- | --- |
-| 9955HX | 办公室 | 本机、主接收端、采集端 | 本次本机验证 |
-| 3600 | 办公室 | 采集端 | 待部署 |
+| 9955HX | 办公室 | 本机、主接收端、采集端 | 已部署，Tailnet HTTPS |
+| 3600 | 办公室 | 采集端 | 已部署，HTTPS 持续上报 |
 | cpu / 12400 | 异地 | 未来备用接收端、采集端 | 待部署 |
 | sd | 可移动 | 可选采集端 | 待部署；不参与更新管理 |
 
@@ -19,7 +19,16 @@
 
 仅依赖 Python 3.11+ 标准库，前端是无构建依赖的 HTML/CSS/JavaScript。源码目录为 `/home/shiki/code/shiki-console`，当前分支 `main`。本次本机运行数据位于已忽略的 `runtime/`；长期运行建议放在源码外。不提交或分享 viewer key、注册码、设备 token、数据库或日志。
 
-当前已初始化的本机实例直接使用以下命令（分别在两个终端运行，不要重复启动已有实例）：
+当前部署已由用户级 systemd 服务运行，并已启用开机启动（两台机器的用户 lingering 均已开启）：
+
+```bash
+# 9955HX：接收端与本机采集端
+systemctl --user status shiki-receiver shiki-agent
+# 3600：仅采集端
+ssh shiki@172.19.8.7 'systemctl --user status shiki-agent'
+```
+
+以下命令用于手动调试，仅在对应 systemd 服务已停止时使用：
 
 ```bash
 cd /home/shiki/code/shiki-console
@@ -48,6 +57,14 @@ python3 -m shiki agent --config /absolute/path/shiki-runtime/agent.json
 注册码由接收端本地 CLI 生成，绑定设备并限时、一次使用。每个接收端单独配对。请通过已有可信渠道传递配对文件，不把注册码放进 URL、公开日志或仓库。
 
 ## 手机访问与未来备用接收端
+
+当前手机入口：`https://shiki-9955hx.tailaed862.ts.net/`。安卓手机须连接同一 Tailnet，在 Chrome 打开并输入本机 `runtime/receiver/viewer.key` 中的查看密钥；不要在聊天、URL 或仓库里分享密钥。Chrome 菜单选择“添加到主屏幕 / 安装应用”，安装后从桌面图标打开。查看密钥仍是会话级存储，重新打开会话时可能需要再次输入。
+
+本机 Tailscale Serve 在私网 443 端口提供自动续期的可信 HTTPS，反向代理到 `127.0.0.1:8765`。没有启用 Funnel。3600 已独立配对并通过同一 HTTPS 地址上报；两端设备 token 各自保存在私有运行目录。
+
+两台电脑使用 `--accept-dns=false --accept-routes=false`，保留原有 DNS 和路由策略。为解析接收端域名，各自 `/etc/hosts` 仅增加 `100.93.232.86 shiki-9955hx.tailaed862.ts.net`，修改前备份为 `/etc/hosts.shiki-console-20261016.bak`。若将来重新注册导致接收端地址变化，应核对并更新此单条映射。
+
+接收端 Host/Origin 配置的原始备份为 `runtime/deploy-backup-20261016/receiver-before-tailnet.json`。临时关闭手机入口可执行 `tailscale serve --https=443 off`；暂停采集使用对应机器的 `systemctl --user stop shiki-agent`。这些操作不需要修改既有更新 timer 或其他应用服务。
 
 `127.0.0.1` 是执行设备自身的地址，手机不能用它连接电脑。正式手机接入需要一个手机可达、证书可信的 HTTPS 地址；允许局域网或已有 Tailnet 路径。本项目不会自动开放防火墙、安装 Tailscale、建立公网映射或修改路由。
 
@@ -105,7 +122,7 @@ agent 默认读取 `~/.local/state/codex-cli-update/status.json`、`~/.local/sta
 
 ## 边界
 
-本次开发不修改 systemd、更新 timer、软件源、现有服务或远程机器。手动启动的本项目进程可用终端 Ctrl+C 结束；常驻运行、开机启动和跨网络发布是独立部署工作。
+当前已按部署授权新增本项目用户级 systemd 服务及 Tailscale 服务；既有更新 timer、软件源和其他应用服务保持原状。12400 备用端尚未部署。
 
 公网暴露、无认证访问、自动信任新设备、任意命令执行、Docker 透传和任意 URL 代理均不在本项目第一阶段范围内。
 
