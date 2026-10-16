@@ -1,0 +1,30 @@
+[Unit]
+Description=SHIKI read-only Docker status snapshot
+
+[Service]
+Type=oneshot
+User=root
+Group=shiki
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/shiki-docker-snapshot.py
+RuntimeDirectory=shiki-docker
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0027
+TimeoutStartSec=12s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/run/shiki-docker
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes

@@ -10,10 +10,11 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import stat
 import subprocess
 import time
 from urllib.request import build_opener, HTTPRedirectHandler, Request, ProxyHandler
-from .common import MAX_BODY, normalize_snapshot, safe_url
+from .common import MAX_BODY, normalize_snapshot, number, safe_url
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -246,7 +247,62 @@ def docker_resource_stats(socket, containers):
             item['error'] = 'Container resource sampling unavailable, timed out or permission denied'
 
 
-def docker_probe(procs):
+def docker_snapshot_probe(path, max_age=60):
+    """Consume an explicit root-owned, non-writable snapshot; no elevation."""
+    data = {'status': 'unknown', 'total': None, 'running': None, 'exited': None,
+            'containers': [], 'error': 'Trusted Docker snapshot unavailable or invalid'}
+    checked_at = None
+    try:
+        path = Path(path)
+        if not path.is_absolute() or '..' in path.parts:
+            raise ValueError('absolute snapshot path required')
+        for parent in path.parents:
+            info = parent.lstat()
+            if info.st_uid != 0 or info.st_mode & 0o022 or not stat.S_ISDIR(info.st_mode):
+                raise ValueError('unsafe snapshot directory trust chain')
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, 'rb') as source:
+            info = os.fstat(source.fileno())
+            if (info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o640
+                    or not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BODY):
+                raise ValueError('unsafe snapshot file')
+            raw = source.read(MAX_BODY + 1)
+        if len(raw) > MAX_BODY:
+            raise ValueError('snapshot exceeds limit')
+        snapshot = json.loads(raw)
+        if not isinstance(snapshot, dict) or type(snapshot.get('schema')) is not int or snapshot['schema'] != 1:
+            raise ValueError('invalid snapshot schema')
+        checked_at = number(snapshot.get('sampled_at'))
+        if checked_at is None:
+            raise ValueError('missing snapshot timestamp')
+        normalized = normalize_snapshot({'docker': snapshot.get('docker'),
+            'services': {'docker': snapshot.get('service')}})
+        data = normalized['docker']
+        status = normalized['services']['docker']
+        if (data['status'] not in ('ok', 'error', 'unknown') or status['status'] != data['status']
+                or status['checked_at'] != checked_at):
+            raise ValueError('inconsistent snapshot')
+        if not 0 <= time.time() - checked_at <= max_age:
+            return ({'status': 'unknown', 'total': None, 'running': None, 'exited': None,
+                     'containers': [], 'error': 'Trusted Docker snapshot expired or future-dated'},
+                    {'status': 'unknown', 'checked_at': checked_at,
+                     'detail': 'Trusted Docker snapshot expired or future-dated; old counters not reused'})
+        if data['status'] == 'ok':
+            if (data['total'] != len(data['containers']) or data['running'] != sum(item['state'] == 'running' for item in data['containers'])
+                    or data['exited'] != sum(item['state'] == 'exited' for item in data['containers'])):
+                raise ValueError('inconsistent container counts')
+        return data, status
+    except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
+        return ({'status': 'unknown', 'total': None, 'running': None, 'exited': None,
+                 'containers': [], 'error': 'Trusted Docker snapshot unavailable or invalid'},
+                {'status': 'unknown', 'checked_at': checked_at,
+                 'detail': 'Trusted Docker snapshot unavailable or invalid; no privilege escalation attempted'})
+
+
+def docker_probe(procs, config=None):
+    config = config or {}
+    if config.get('docker_snapshot_file'):
+        return docker_snapshot_probe(config['docker_snapshot_file'], config.get('docker_snapshot_max_age_seconds', 60))
     result = {'status': 'unknown', 'total': None, 'running': None, 'exited': None,
               'containers': [], 'error': None}
     # Never connect to an inactive socket: docker CLI might otherwise activate dockerd.
@@ -439,7 +495,7 @@ def collect(config):
     executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='probe')
     probes = {'cpu': lambda: cpu_probe(), 'memory': memory_probe,
         'disks': lambda: disk_probe(config.get('disks', ['/'])), 'gpus': gpu_probe,
-        'docker': lambda: docker_probe(procs), 'tailscale': lambda: tailscale_probe(procs),
+        'docker': lambda: docker_probe(procs, config), 'tailscale': lambda: tailscale_probe(procs),
         'codex': lambda: codex_probe(procs, config.get('codex_metadata', False)),
         'updates': lambda: updates_probe(config)}
     for name, url in config.get('known_health_urls', {}).items():

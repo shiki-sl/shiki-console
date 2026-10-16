@@ -24,7 +24,8 @@ def agent_initialize(path, device_id):
     config = {'device_id': ident(device_id), 'interval_seconds': 15,
         'collection_timeout_seconds': 8, 'disks': ['/'], 'receivers': [],
         'known_health_urls': {}, 'update_metadata_file': None, 'update_status_files': dict(DEFAULT_UPDATE_STATUS_FILES),
-        'update_fresh_seconds': 172800, 'codex_metadata': False}
+        'update_fresh_seconds': 172800, 'codex_metadata': False,
+        'docker_snapshot_file': None, 'docker_snapshot_max_age_seconds': 60}
     write_private(path, config)
     return config
 
@@ -42,6 +43,13 @@ def validate_agent(config):
     for name, path in config.get('update_status_files', {}).items():
         if name not in ('system', 'cli', 'gui') or (path is not None and (not isinstance(path, str) or len(path) > 1024)):
             raise ValueError('invalid native updater path')
+    snapshot_path = config.get('docker_snapshot_file')
+    if snapshot_path is not None and (not isinstance(snapshot_path, str) or not Path(snapshot_path).is_absolute()
+                                     or '..' in Path(snapshot_path).parts or len(snapshot_path) > 1024):
+        raise ValueError('Docker snapshot path must be an absolute trusted path')
+    snapshot_age = config.get('docker_snapshot_max_age_seconds', 60)
+    if isinstance(snapshot_age, bool) or not isinstance(snapshot_age, (int, float)) or not 5 <= snapshot_age <= 300:
+        raise ValueError('Docker snapshot maximum age must be 5..300 seconds')
     seen = set()
     if len(config.get('receivers', [])) > 16:
         raise ValueError('too many receivers')
@@ -156,7 +164,7 @@ def _collect_process(config, pipe):
 def collect_bounded(config):
     context = multiprocessing.get_context('spawn')
     reader, writer = context.Pipe(duplex=False)
-    probe_config = {key: config[key] for key in ('collection_timeout_seconds', 'disks', 'known_health_urls', 'update_metadata_file', 'update_status_files', 'update_fresh_seconds', 'codex_metadata') if key in config}
+    probe_config = {key: config[key] for key in ('collection_timeout_seconds', 'disks', 'known_health_urls', 'update_metadata_file', 'update_status_files', 'update_fresh_seconds', 'codex_metadata', 'docker_snapshot_file', 'docker_snapshot_max_age_seconds') if key in config}
     process = context.Process(target=_collect_process, args=(probe_config, writer), daemon=True)
     process.start()
     writer.close()

@@ -62,6 +62,8 @@ python3 -m shiki agent --config /absolute/path/shiki-runtime/agent.json
 
 本机 Tailscale Serve 在私网 443 端口提供自动续期的可信 HTTPS，反向代理到 `127.0.0.1:8765`。没有启用 Funnel。3600 已独立配对并通过同一 HTTPS 地址上报；两端设备 token 各自保存在私有运行目录。
 
+9955HX 的 Open WebUI（本地 `3000`）另通过 Tailnet HTTPS `8443` 提供入口，已加入手机端“应用”页。它使用应用自身的登录机制，不共享 SHIKI 查看密钥；MySQL、Redis 等数据库协议不作为网页入口或直接向手机开放端口。
+
 两台电脑使用 `--accept-dns=false --accept-routes=false`，保留原有 DNS 和路由策略。为解析接收端域名，各自 `/etc/hosts` 仅增加 `100.93.232.86 shiki-9955hx.tailaed862.ts.net`，修改前备份为 `/etc/hosts.shiki-console-20261016.bak`。若将来重新注册导致接收端地址变化，应核对并更新此单条映射。
 
 接收端 Host/Origin 配置的原始备份为 `runtime/deploy-backup-20261016/receiver-before-tailnet.json`。临时关闭手机入口可执行 `tailscale serve --https=443 off`；暂停采集使用对应机器的 `systemctl --user stop shiki-agent`。这些操作不需要修改既有更新 timer 或其他应用服务。
@@ -107,12 +109,41 @@ python3 -m shiki agent --config /absolute/path/shiki-runtime/agent.json
 
 - CPU、内存、磁盘：读取 Linux `/proc`、文件系统统计与 `lm-sensors`。
 - GPU：调用已有 `nvidia-smi` 或读取可用的 AMD sysfs；驱动异常、不支持或权限不足时保留原因。
-- Docker：仅在可安全读取时获取 daemon、容器状态和资源占用。服务或 socket 未运行时不主动触发启动；不会添加 docker 组、sudo 或向 Web 暴露 Docker socket。
+- Docker：获取 daemon、容器状态和资源占用。普通 agent 不使用 sudo、不加入 docker 组、不向 Web 暴露 socket；可选择下述独立只读快照服务。Docker 未运行时不主动启动，容器数量保持未知。
 - Tailscale、Sunshine：读取既有状态，不安装或修改网络。服务未发现与应用端到端可用是不同结论。
 - 更新：读取既有结果记录及状态，区分成功、失败、延后和未知；不执行任何更新检查或更新程序。重启需求缺少可靠依据时保持未知。
 - Codex：只读进程及可用的会话元数据；模型和任务标注为最近观测值，不将进程存活当成任务成功。token/s 在没有可靠计时来源时为 N/A。不读取或上报认证 token、提示词正文、工具输出或完整日志。
 
 agent 默认读取 `~/.local/state/codex-cli-update/status.json`、`~/.local/state/codex-gui-update/status.json` 与 `/var/lib/official-package-update/state.json`。可通过 `update_status_files` 分别指定 `cli`、`gui`、`system` 路径，读取失败显示未知。默认更新记录时效为 48 小时，普通设备数据为 90 秒；两者独立。`codex_metadata` 默认关闭，本机实例已开启精确字段读取。`known_health_urls` 可配置 `grafana`、`loki` 的真实只读健康地址，未配置不扫描端口。
+
+### 无 Docker socket 权限时读取状态
+
+`deploy/docker_snapshot.py` 是独立的 root 快照程序，只执行固定的 Docker 状态与资源查询。它先检查 `docker.service`；服务停止时仅报告未运行，不访问 socket。已运行时只输出容器 ID、名称、状态、健康及 CPU/内存用量，不输出环境变量、挂载、日志或容器命令。
+
+安装前检查目标是否已有文件并保留备份；以下示例的只读消费组为 `shiki`，其他用户需相应调整程序中的组及 unit：
+
+```bash
+sudo install -D -o root -g root -m 0755 deploy/docker_snapshot.py /usr/local/libexec/shiki-docker-snapshot.py
+sudo install -o root -g root -m 0644 deploy/systemd/shiki-docker-snapshot.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now shiki-docker-snapshot.timer
+sudo systemctl start shiki-docker-snapshot.service
+```
+
+在已有 `runtime/agent.json` 中合并以下两项并重启 `shiki-agent`，不要覆盖原有配对信息：
+
+```json
+{
+  "docker_snapshot_file": "/run/shiki-docker/status.json",
+  "docker_snapshot_max_age_seconds": 60
+}
+```
+
+timer 每次采样完成约 15 秒后再次运行。脚本以隔离 Python 模式执行，安装文件由 root 控制；`/run/shiki-docker` 为 `root:shiki 0750`、快照为 `root:shiki 0640`。agent 校验文件权限、结构与原始采样时间；超过 60 秒或读取失败显示未知，不把旧快照当成实时数据。未配置这两项时保留原来的普通用户直接探测方式。
+
+停用时先从 agent 配置删除上述两项并重启 agent，再停用 `shiki-docker-snapshot.timer`。这会恢复原来的探测方式；无 socket 权限时显示未知。此服务不会改变 Docker 的启动设置、socket 权限或业务容器。
+
+9955HX、3600 已安装此快照服务。3600 当前 Docker 启动受内核模块不匹配阻塞，手机端如实显示异常；恢复事项与继续工作的提示词见 `HANDOFF.md`。
 
 ## 健康状态与数据时效
 

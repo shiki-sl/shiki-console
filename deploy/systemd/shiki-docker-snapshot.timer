@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh SHIKI Docker status snapshot
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=shiki-docker-snapshot.service
+
+[Install]
+WantedBy=timers.target
