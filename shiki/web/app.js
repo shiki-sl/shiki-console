@@ -17,8 +17,31 @@ const retained = new Map();
 let detailDevice = null;
 const now = () => clock.server + (performance.now() - clock.perf) / 1000;
 const tokenKey = base => `shiki.viewer:${new URL(base).origin}`;
-const getToken = base => { try { return sessionStorage.getItem(tokenKey(base)) || ''; } catch { return ''; } };
-const persistPrefs = () => { try { localStorage.setItem('shiki.preferences', JSON.stringify(config)); } catch { /* private browsing may disable storage */ } };
+// Migrate an existing session once; a later clear must not revive keys from an older tab.
+try {
+  const migrate = localStorage.getItem('shiki.viewer.storage') !== 'persistent-v1';
+  for (const key of Object.keys(sessionStorage).filter(key => key.startsWith('shiki.viewer:'))) {
+    if (migrate && !localStorage.getItem(key)) localStorage.setItem(key, sessionStorage.getItem(key));
+    sessionStorage.removeItem(key);
+  }
+  localStorage.setItem('shiki.viewer.storage', 'persistent-v1');
+} catch { /* Saving below reports unavailable persistent storage to the user. */ }
+const getToken = base => { try { return localStorage.getItem(tokenKey(base)) || ''; } catch { return ''; } };
+function saveToken(base, token) {
+  try { localStorage.setItem(tokenKey(base), token); }
+  catch { throw Error('无法在本机保存查看密钥，请检查浏览器的存储权限。'); }
+}
+function clearViewerTokens() {
+  for (const key of Object.keys(localStorage).filter(key => key.startsWith('shiki.viewer:'))) localStorage.removeItem(key);
+  localStorage.setItem('shiki.viewer.storage', 'persistent-v1');
+  try {
+    for (const key of Object.keys(sessionStorage).filter(key => key.startsWith('shiki.viewer:'))) sessionStorage.removeItem(key);
+  } catch { /* The migration marker prevents old session keys from being imported again. */ }
+}
+const persistPrefs = () => {
+  try { localStorage.setItem('shiki.preferences', JSON.stringify(config)); }
+  catch { throw Error('无法在本机保存接收端设置，请检查浏览器的存储权限。'); }
+};
 function safeReceiver(raw, allowEmpty = false) {
   if (!raw && allowEmpty) return '';
   const u = new URL(raw);
@@ -64,9 +87,10 @@ function refreshOpenDetail() {
 }
 function issues() {
   return (data?.devices || []).flatMap(d => {
-    const list = (d.issues || []).filter(i => i.severity !== 'unknown').map(i => ({...i, name:d.name, deviceId:d.id}));
     const state = deviceState(d);
-    if (d.expected_online && ['offline','stale'].includes(state)) list.unshift({name:d.name, deviceId:d.id, component:'采集连接',severity:state === 'offline' ? 'error' : 'warning',message:`${statusLabel(state)} · 最近采样 ${ageText(deviceAge(d))}，历史数值仅供参考`});
+    const connectionIssue = d.expected_online && ['offline','stale'].includes(state);
+    const list = (d.issues || []).filter(i => i.severity !== 'unknown' && !(connectionIssue && i.component === 'connection')).map(i => ({...i, name:d.name, deviceId:d.id}));
+    if (connectionIssue) list.unshift({name:d.name, deviceId:d.id, component:'采集连接',severity:state === 'offline' ? 'error' : 'warning',message:`${statusLabel(state)} · 最近采样 ${ageText(deviceAge(d))}，历史数值仅供参考`});
     return list;
   }).sort((a,b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1));
 }
@@ -103,7 +127,7 @@ function filters() {
   const sites = [...new Set((data?.devices || []).map(d=>d.site).filter(Boolean))];
   return `<div class="filters" aria-label="按位置筛选"><button class="chip ${filter === 'all' ? 'active' : ''}" data-filter="all">全部设备</button>${sites.map(s => `<button class="chip ${filter === s ? 'active' : ''}" data-filter="${esc(s)}">${esc(s)}</button>`).join('')}</div>`;
 }
-function pairCard() { return `<section class="card pair-card"><span class="eyebrow">PRIVATE BY DEFAULT</span><h2>与你的接收端配对</h2><p>从接收端的 <code>viewer.key</code> 复制只读查看密钥。此处仅登录查看，不注册或添加设备。密钥仅保留在当前浏览器会话中，不会写入地址或离线缓存。</p><form id="pair-form"><label class="sr-only" for="pair-token">查看密钥</label><input id="pair-token" type="password" name="token" autocomplete="off" placeholder="粘贴 viewer key" required><button class="button" type="submit">连接接收端 ↗</button></form><p class="form-note">当前接收端：${esc(config.primary)}<br>其他接收端可在「设置」中单独配对。</p></section>`; }
+function pairCard() { return `<section class="card pair-card"><span class="eyebrow">PRIVATE BY DEFAULT</span><h2>与你的接收端配对</h2><p>从接收端的 <code>viewer.key</code> 复制只读查看密钥。此处仅登录查看，不注册或添加设备。密钥保存在本机，关闭后重开仍可查看；可在「设置」中清除本机配对。</p><form id="pair-form"><label class="sr-only" for="pair-token">查看密钥</label><input id="pair-token" type="password" name="token" autocomplete="off" placeholder="粘贴 viewer key" required><button class="button" type="submit">连接接收端 ↗</button></form><p class="form-note">当前接收端：${esc(config.primary)}<br>其他接收端可在「设置」中单独配对。</p></section>`; }
 function containerSummary(devices) {
   const known = devices.filter(d=>finite(d.snapshot?.docker?.running) && d.snapshot.docker.running >= 0 && !d.snapshot.docker.error && d.snapshot.docker.status !== 'unknown');
   return {value:known.length ? known.reduce((sum,d)=>sum+d.snapshot.docker.running,0).toString().padStart(2,'0') : 'N/A', coverage:known.length && known.length < devices.length ? ` · 部分 ${known.length}/${devices.length} 台已知` : '', historical:known.some(unavailable)};
@@ -122,7 +146,7 @@ function renderApps() {
 }
 function safeApp(url) { try { const u = new URL(url); return ['http:','https:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; } }
 function renderSettings() {
-  return `<h1 class="page-title">观测偏好</h1><p class="subtitle">这里只配置本机查看方式，不会更改设备或接收端。</p><form id="settings-form"><section class="card form-card"><h2>接收端与会话配对</h2><label class="field"><span>主接收端 · PRIMARY</span><input name="primary" type="url" value="${esc(config.primary)}" required autocomplete="off"></label><label class="field"><span>主接收端查看密钥 · 留空保留当前密钥</span><input name="primaryToken" type="password" autocomplete="off" placeholder="${getToken(config.primary) ? '当前会话已配对' : '粘贴 viewer.key'}"></label><label class="field"><span>备用接收端 · 默认未启用</span><input name="backup" type="url" value="${esc(config.backup)}" autocomplete="off" placeholder="https://standby.example.com"></label><label class="field"><span>备用接收端独立查看密钥</span><input name="backupToken" type="password" autocomplete="off" placeholder="${config.backup && getToken(config.backup) ? '当前会话已配对' : '仅配置 URL 不会启用故障切换'}"></label><p class="form-note">主端请求失败后，最多等待 3 秒，再顺序尝试已配对的备用端。备用端数据有独立来源与时间；较旧采样不会覆盖较新采样。跨域接收端需配置允许本页面来源的 CORS。</p></section><section class="card form-card"><h2>刷新与显示</h2><label class="field"><span>自动刷新 · 页面隐藏时暂停</span><select name="interval">${[5,15,30,60,0].map(n=>`<option value="${n}" ${Number(config.interval) === n ? 'selected' : ''}>${n ? `每 ${n} 秒` : '关闭，仅手动刷新'}</option>`).join('')}</select></label><p class="form-note">支持下拉刷新。数据按接收端的时效策略标记过期 / 离线（默认 90 / 300 秒）；采集端给出的更差状态会保留。PWA 后台刷新和常驻连接不作保证。</p><div class="form-actions"><button class="button" type="submit">保存并刷新</button><button class="button secondary" id="forget" type="button">清除本机配对</button></div></section></form><section class="card form-card"><h2>本地隐私</h2><p class="form-note">查看密钥仅存 sessionStorage，关闭会话后需重新配对。离线快照仅保留设备指标及检查状态，最长 24 小时，不包含密钥、任务内容或应用入口。所有数据 API 均不进入 Service Worker 缓存。</p><div class="form-actions"><button id="clear-cache" class="button secondary">清除历史快照</button></div></section>`;
+  return `<h1 class="page-title">观测偏好</h1><p class="subtitle">这里只配置本机查看方式，不会更改设备或接收端。</p><form id="settings-form"><section class="card form-card"><h2>接收端与查看密钥</h2><label class="field"><span>主接收端 · PRIMARY</span><input name="primary" type="url" value="${esc(config.primary)}" required autocomplete="off"></label><label class="field"><span>主接收端查看密钥 · 留空保留当前密钥</span><input name="primaryToken" type="password" autocomplete="off" placeholder="${getToken(config.primary) ? '本机已保存密钥' : '粘贴 viewer.key'}"></label><label class="field"><span>备用接收端 · 默认未启用</span><input name="backup" type="url" value="${esc(config.backup)}" autocomplete="off" placeholder="https://standby.example.com"></label><label class="field"><span>备用接收端独立查看密钥</span><input name="backupToken" type="password" autocomplete="off" placeholder="${config.backup && getToken(config.backup) ? '本机已保存密钥' : '仅配置 URL 不会启用故障切换'}"></label><p class="form-note">主端请求失败后，最多等待 3 秒，再顺序尝试已配对的备用端。备用端数据有独立来源与时间；较旧采样不会覆盖较新采样。跨域接收端需配置允许本页面来源的 CORS。</p></section><section class="card form-card"><h2>刷新与显示</h2><label class="field"><span>自动刷新 · 页面隐藏时暂停</span><select name="interval">${[5,15,30,60,0].map(n=>`<option value="${n}" ${Number(config.interval) === n ? 'selected' : ''}>${n ? `每 ${n} 秒` : '关闭，仅手动刷新'}</option>`).join('')}</select></label><p class="form-note">支持下拉刷新。数据按接收端的时效策略标记过期 / 离线（默认 90 / 300 秒）；采集端给出的更差状态会保留。PWA 后台刷新和常驻连接不作保证。</p><div class="form-actions"><button class="button" type="submit">保存并刷新</button><button class="button secondary" id="forget" type="button">清除本机配对</button></div></section></form><section class="card form-card"><h2>本地隐私</h2><p class="form-note">查看密钥保存在当前浏览器或 PWA 的本机存储中，关闭后保留；「清除本机配对」会删除已保存的密钥。离线快照仅保留设备指标及检查状态，最长 24 小时，不包含密钥、任务内容或应用入口。所有数据 API 均不进入 Service Worker 缓存。</p><div class="form-actions"><button id="clear-cache" class="button secondary">清除历史快照</button></div></section>`;
 }
 function render() {
   if (!['overview','devices','apps','settings'].includes(view)) view='overview';
@@ -209,19 +233,19 @@ window.addEventListener('hashchange',()=>{view=location.hash.slice(1)||'overview
 main.addEventListener('click',e=>{
   const chip=e.target.closest('[data-filter]');if(chip){filter=chip.dataset.filter;render();}
   const device=e.target.closest('[data-device]');if(device){const d=data?.devices.find(d=>d.id===device.dataset.device);if(d)detail(d);}
-  if(e.target.closest('#forget')){try{for(const key of Object.keys(sessionStorage)){if(key.startsWith('shiki.viewer:')) sessionStorage.removeItem(key);}}catch{}networkError='查看密钥已从当前会话清除';main.innerHTML='';render();toast('会话配对已清除');}
+  if(e.target.closest('#forget')){try{clearViewerTokens();networkError='查看密钥已从本机清除';main.innerHTML='';render();toast('本机配对已清除');}catch{toast('无法清除查看密钥，请检查浏览器的存储权限。');}}
   if(e.target.closest('#clear-cache')){localStorage.removeItem('shiki.lastmetrics');if(cached){data=null;retained.clear();loadedAt=null;}toast('历史快照已清除');}
 });
 main.addEventListener('submit',e=>{
   e.preventDefault();
-  if(e.target.id==='pair-form'){const token=new FormData(e.target).get('token').trim();sessionStorage.setItem(tokenKey(config.primary),token);e.target.reset();refresh().then(()=>{if(!networkError){view='overview';location.hash='overview';main.innerHTML='';render();window.scrollTo(0,0);}});}
+  if(e.target.id==='pair-form'){try{const token=new FormData(e.target).get('token').trim();saveToken(config.primary,token);e.target.reset();refresh().then(()=>{if(!networkError){view='overview';location.hash='overview';main.innerHTML='';render();window.scrollTo(0,0);}});}catch(err){toast(err.message);}}
   if(e.target.id==='settings-form'){
     try {
       const f=new FormData(e.target),primary=safeReceiver(f.get('primary').trim()),backup=safeReceiver(f.get('backup').trim(),true);
       if(backup && primary===backup) throw Error('主接收端与备用接收端需为不同来源');
       const previous=config.primary;
       config={primary,backup,interval:Number(f.get('interval'))};
-      for(const [base,key] of [[primary,'primaryToken'],[backup,'backupToken']]) if(base && f.get(key).trim()) sessionStorage.setItem(tokenKey(base),f.get(key).trim());
+      for(const [base,key] of [[primary,'primaryToken'],[backup,'backupToken']]) if(base && f.get(key).trim()) saveToken(base,f.get(key).trim());
       persistPrefs();if(previous!==primary){data=null;loadedAt=null;retained.clear();localStorage.removeItem('shiki.lastmetrics');}
       toast('查看偏好已保存');main.innerHTML='';render();refresh();
     }catch(err){toast(err.message);}
