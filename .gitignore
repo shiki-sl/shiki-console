@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+runtime/
+*.sqlite*
+*.key
+agent.json
+pair-code*
+*.log
