@@ -1,6 +1,6 @@
 # Docker 监控及服务入口接续
 
-以下记录截至 2026-10-16 18:40（Asia/Shanghai），继续操作前须核对实时状态。
+以下记录更新于 2026-10-16 18:52（Asia/Shanghai），继续操作前须核对实时状态。
 
 ## 已完成
 
@@ -17,9 +17,13 @@
 
 启动日志：`failed to create NAT chain DOCKER`，`iptables v1.8.13 (nf_tables): Could not fetch rule set generation id: Invalid argument`。
 
-当前运行内核 `7.2.7-arch1-1`，磁盘模块目录为 `7.2.9-arch1-1` 与 `6.18.56-1-lts`。`modprobe -n -v nf_tables` 明确报告当前内核目录下找不到模块。没有切换 iptables 实现、禁用防火墙或重启机器来绕过。
+重启前运行内核 `7.2.7-arch1-1`，磁盘模块目录为 `7.2.9-arch1-1` 与 `6.18.56-1-lts`。`modprobe -n -v nf_tables` 明确报告当前内核目录下找不到模块。没有切换 iptables 实现或禁用防火墙。
 
-**整机重启尚未得到用户确认。** 当前聊天已发出询问；若没有新的明确许可，停在重启前。用户允许启动 Docker，不代表允许中断整机的现有会话。
+**用户随后明确批准“重启3600吧”，已执行一次正常 `systemctl reboot`，SSH 返回 0。** 重启前核验默认 UKI 为 `7.2.9-arch1-1`，与已安装模块匹配；SSH、Tailscale 和用户采集服务均 enabled，用户 Linger=yes，没有发现正在运行的构建或包管理任务。旧 boot ID 为 `10c041f5-edeb-4040-a9e5-023b482da6c4`。
+
+重启请求后 SSH 由 Connection refused 变为 No route to host，局域网邻居解析失败，Tailscale 节点也未恢复在线。等待约 5 分钟仍不可达；用户确认目前不在机器旁。**只能确认重启命令已被接受，不能确认新内核成功启动。** 尚未执行重启后的 Docker 启动和容器验收，也未重复重启、强制断电或更改网络。当前没有创建后台监控。
+
+下一步需现场核对电源、启动画面及网络，或在用户确认机器重新联网后恢复远程检查。先比较 boot ID、运行内核和模块，再按已有本任务授权启动 Docker；不要把此次已发出的重启请求当成再次重启的理由。
 
 只读检查实际 Docker 数据目录 `/var/lib/docker` 发现：
 
@@ -30,7 +34,7 @@
 
 ## 可复制的接续提示词
 
-> 继续完成 shiki-console 的 3600 Docker 恢复与手机服务监控。先读取本项目 README、HANDOFF.md 与当前生效 AGENTS 规则。9955HX 的 Docker 快照和 Open WebUI Tailnet HTTPS 8443 已验证；3600 的监控桥接已装好，但 Docker 因旧运行内核缺失 nf_tables 模块而启动失败。已有授权允许启动 3600 Docker，以及本任务代码提交推送；整机重启仍须核对当前聊天是否有新的明确批准，不能从此文推断已批准。若获准重启，先核验重启影响和 SSH/Tailscale/agent 自动恢复条件，再在恢复后确认运行内核和模块匹配、启动 Docker，并按真实容器状态核对 SHIKI dashboard。保留业务容器及数据，不重建、不删库，不强制启动用户原本停止的容器。MySQL/Nginx 尚未发现，先向用户核对实际部署位置，再作有界只读检查。复用现有测试及证据，修复和直接影响行为验证充分后提交并普通 push 到已核实的 origin/main。报告真实手机验收与浏览器/API 验证的差别。
+> 继续完成 shiki-console 的 3600 Docker 恢复与手机服务监控。先读取本项目 README、HANDOFF.md 与当前生效 AGENTS 规则。9955HX 的 Docker 快照和 Open WebUI Tailnet HTTPS 8443 已验证；3600 的监控桥接已装好，但 Docker 因旧运行内核缺失 nf_tables 模块而启动失败。已有授权允许启动 3600 Docker，以及本任务代码提交推送；用户已经明确批准并实际发出一次3600正常重启，但随后局域网和Tailscale均未恢复在线，用户不在现场。不要重复重启。先核对现场反馈或恢复后的远程连通性，比较boot ID，并确认新运行内核和模块匹配，再按已有本任务授权启动 Docker，按真实容器状态核对 SHIKI dashboard。保留业务容器及数据，不重建、不删库，不强制启动用户原本停止的容器。MySQL/Nginx 尚未发现，先向用户核对实际部署位置，再作有界只读检查。复用现有测试及证据，修复和直接影响行为验证充分后提交并普通 push 到已核实的 origin/main。报告真实手机验收与浏览器/API 验证的差别。
 
 ## 恢复与回退位置
 
