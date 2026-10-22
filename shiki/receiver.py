@@ -13,6 +13,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
 
+from .workbench import WORKBENCH_SERVICES
+
 from .common import (MAX_BODY, digest, ident, new_token, normalize_snapshot, number,
                      private_dir, private_file, read_json, safe_url, text, write_private)
 
@@ -87,7 +89,7 @@ def validate_config(config):
                 raise ValueError('inventory flags must be booleans')
         if any(v not in ('cpu', 'memory', 'disks', 'gpu') for v in node.get('required_telemetry', [])):
             raise ValueError('invalid required telemetry')
-        if any(v not in ('codex', 'docker', 'tailscale', 'sunshine', 'loki', 'grafana', 'updates') for v in node.get('required_services', [])):
+        if any(v not in ('codex', 'docker', 'tailscale', 'sunshine', 'loki', 'grafana', 'updates') + tuple(WORKBENCH_SERVICES) for v in node.get('required_services', [])):
             raise ValueError('invalid required service')
         for value in node.get('thresholds', {}).values():
             number(value, 0, 250)
@@ -260,7 +262,7 @@ def device_view(node, row, config, now):
             if not complete:
                 issues.append(issue(kind, 'unknown', '必要指标不可用或未完整采集'))
         for name in node.get('required_services', []):
-            service = snapshot['services'][name]
+            service = snapshot['services'].get(name, {'status': 'unknown', 'checked_at': None, 'detail': None})
             checked = service['checked_at']
             max_age = config.get('update_fresh_seconds', 172800) if name == 'updates' else config.get('fresh_seconds', 90)
             fresh = checked is not None and 0 <= now - checked <= max_age

@@ -15,6 +15,7 @@ import subprocess
 import time
 from urllib.request import build_opener, HTTPRedirectHandler, Request, ProxyHandler
 from .common import MAX_BODY, normalize_snapshot, number, safe_url
+from .workbench import configured_services, workbench_probe
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -501,6 +502,9 @@ def collect(config):
     for name, url in config.get('known_health_urls', {}).items():
         if name in ('loki', 'grafana'):
             probes[name] = lambda url=url: health_probe(url)
+    for name in configured_services(config):
+        snapshot['services'][name] = service('unknown', '尚未完成本机服务检查')
+        probes[name] = lambda name=name: workbench_probe(name)
     futures = {executor.submit(fn): name for name, fn in probes.items()}
     done, pending = wait(futures, timeout=timeout)
     for future in done:

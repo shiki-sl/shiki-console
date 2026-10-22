@@ -158,3 +158,10 @@ timer 每次采样完成约 15 秒后再次运行。脚本以隔离 Python 模�
 公网暴露、无认证访问、自动信任新设备、任意命令执行、Docker 透传和任意 URL 代理均不在本项目第一阶段范围内。
 
 本机验收记录独立保存在 `/home/shiki/文档/code/shiki-console/VALIDATION.md`，不随源码继续维护。
+
+
+## 开发工具入口与服务监听
+
+`deploy/workbench-config.json` 保存本次 IT Tools 和登录工具的非敏感配置片段。将对应 `inventory` 条目的应用和必要服务追加到接收端配置；将 `agents` 下对应设备的 `monitored_services` 合并到其 agent 配置，保留现有字段与其他入口。运行配置仍放在被忽略的 `runtime/`，不提交查看密钥或发送令牌。
+
+`it_tools` 检查系统级 `it-tools.service` 与回环端口 8086；`it_tools_auth` 检查用户级 `it-tools-auth.service` 与回环端口 8844。仅检查固定单元和本机 TCP 监听，不发送密码、获取 Token、登录或续期，也不代表外部访问与认证会话有效。未配置的设备不增加这两项；缺失采样或权限不足保持未知。配置变化需重启相应接收端或 agent，再读回带时间戳的采样。

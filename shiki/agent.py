@@ -13,6 +13,7 @@ from urllib.request import Request, build_opener, HTTPSHandler, ProxyHandler
 import ssl
 
 from .collector import DEFAULT_UPDATE_STATUS_FILES, NoRedirect, collect
+from .workbench import configured_services
 from .common import (MAX_BODY, digest, ident, new_token, normalize_snapshot, private_dir,
                      private_file, read_json, safe_url, write_private)
 
@@ -32,6 +33,7 @@ def agent_initialize(path, device_id):
 
 def validate_agent(config):
     ident(config['device_id'])
+    configured_services(config)
     if not 5 <= config.get('interval_seconds', 15) <= 3600:
         raise ValueError('agent interval must be 5..3600 seconds')
     if not 2 <= config.get('collection_timeout_seconds', 8) <= 30:
@@ -164,7 +166,7 @@ def _collect_process(config, pipe):
 def collect_bounded(config):
     context = multiprocessing.get_context('spawn')
     reader, writer = context.Pipe(duplex=False)
-    probe_config = {key: config[key] for key in ('collection_timeout_seconds', 'disks', 'known_health_urls', 'update_metadata_file', 'update_status_files', 'update_fresh_seconds', 'codex_metadata', 'docker_snapshot_file', 'docker_snapshot_max_age_seconds') if key in config}
+    probe_config = {key: config[key] for key in ('monitored_services', 'collection_timeout_seconds', 'disks', 'known_health_urls', 'update_metadata_file', 'update_status_files', 'update_fresh_seconds', 'codex_metadata', 'docker_snapshot_file', 'docker_snapshot_max_age_seconds') if key in config}
     process = context.Process(target=_collect_process, args=(probe_config, writer), daemon=True)
     process.start()
     writer.close()
@@ -186,6 +188,8 @@ def collect_bounded(config):
             process.join()
     if result is None:
         result = normalize_snapshot({})
+        for name in configured_services(config):
+            result['services'][name] = {}
         for service in result['services'].values():
             service.update(status='unknown', checked_at=time.time(), detail='Collection timeout or unsupported platform')
         result['hardware']['cpu']['error'] = 'Collection deadline exceeded'

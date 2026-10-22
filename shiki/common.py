@@ -10,6 +10,8 @@ import secrets
 import tempfile
 from urllib.parse import urlsplit
 
+from .workbench import WORKBENCH_SERVICES
+
 MAX_BODY = 131072
 ID_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$')
 
@@ -161,7 +163,7 @@ def normalize_snapshot(raw):
         'total_bytes': number, 'error': text}) for v in bounded_list(hardware.get('disks'), 32)]
     services = obj(raw.get('services', {}))
     result['services'] = {}
-    for name in ('codex', 'docker', 'tailscale', 'sunshine', 'loki', 'grafana', 'updates'):
+    for name in ('codex', 'docker', 'tailscale', 'sunshine', 'loki', 'grafana', 'updates') + tuple(name for name in WORKBENCH_SERVICES if name in services):
         item = fields(services.get(name, {}), {'status': text, 'checked_at': number, 'detail': text})
         if item['status'] not in ('ok', 'error', 'unknown', 'not_installed'):
             item['status'] = 'unknown'

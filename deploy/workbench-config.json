@@ -1,0 +1,48 @@
+{
+  "agents": {
+    "9955hx": {
+      "monitored_services": [
+        "it_tools_auth"
+      ]
+    },
+    "3600": {
+      "monitored_services": [
+        "it_tools"
+      ]
+    }
+  },
+  "inventory": [
+    {
+      "id": "9955hx",
+      "apps": [
+        {
+          "id": "ccxi-login",
+          "name": "登录状态与 Token",
+          "description": "RMS / Admin 登录与 Token · 由 9955HX 执行，需企业网络",
+          "url": "https://shiki-9955hx.tailaed862.ts.net:8446/",
+          "access": "tailnet",
+          "enabled": true
+        }
+      ],
+      "required_services": [
+        "it_tools_auth"
+      ]
+    },
+    {
+      "id": "3600",
+      "apps": [
+        {
+          "id": "it-tools",
+          "name": "IT Tools",
+          "description": "开发工具箱 · JSON、编码转换、时间与文本工具",
+          "url": "https://shiki-3600.tailaed862.ts.net/",
+          "access": "tailnet",
+          "enabled": true
+        }
+      ],
+      "required_services": [
+        "it_tools"
+      ]
+    }
+  ]
+}
