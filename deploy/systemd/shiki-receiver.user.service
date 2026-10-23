@@ -1,0 +1,14 @@
+[Unit]
+Description=SHIKI monitoring receiver (user service)
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/shiki-console
+ExecStart=/usr/bin/python3 -m shiki serve --data-dir %h/.local/state/shiki-console/receiver
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

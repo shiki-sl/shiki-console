@@ -2,6 +2,20 @@
 
 面向 Android 手机的只读 Web 控制台。设备主动注册、独立向多个接收端上报；手机查看汇总状态并打开已配置的 Web 应用。页面不提供关机、重启、容器操作、终端、更新触发或配置修改接口。
 
+## 从这里开始
+
+SHIKI 是可自行部署的 Linux 设备监控工具：Python 标准库实现接收端与采集端，原生 HTML/CSS/JavaScript 实现移动端页面。查看密钥与设备上报令牌相互独立；指标不可读取时保留 N/A、原因和采样时间。
+
+- **首次安装**：[安装与运行指南](docs/INSTALL.md) 提供从克隆、初始化、设备配对到查看真实采样的完整步骤。
+- **通用配置**：[单机示例](examples/receiver.local.json) 只配置一台名为 `local` 的设备，不依赖维护者的硬件、账号或网络。
+- **运行要求**：Linux、Python 3.11+（含 `sqlite3`、`ssl`、`fcntl`），以及现代浏览器。无需 pip 依赖、Node.js 构建或 OpenAI 账号/API Key。Git 仅用于取得源码。
+- **可选能力**：Docker、Tailscale、GPU 工具和 systemd 各自按需使用；没有安装或权限不足时显示未知，不影响基础接收与上报。
+- **许可**：本项目采用 [MIT License](LICENSE)，版权归 `shiki-sl` 及相应权利人所有。外部工具保留各自的许可证。
+
+首次使用请先完成指南中的本机回环验证，再配置手机可访问的 HTTPS 地址。当前是早期项目，尚无正式 Release；不承诺 Windows/macOS 采集支持、历史曲线或已验证的跨站点容灾。
+
+> 下文是维护者已有环境的部署记录，不是新用户的安装步骤。设备名、内网地址、绝对路径和服务状态只描述该环境；新用户请使用上方通用指南，不要照抄个人部署参数。
+
 ## 当前设备与故障范围
 
 | 设备 | 位置 | 角色 | 当前接入范围 |
@@ -58,7 +72,7 @@ python3 -m shiki agent --config /absolute/path/shiki-runtime/agent.json
 
 ## 手机访问与未来备用接收端
 
-当前手机入口：`https://shiki-9955hx.tailaed862.ts.net/`。安卓手机须连接同一 Tailnet，在 Chrome 打开并输入本机 `runtime/receiver/viewer.key` 中的查看密钥；不要在聊天、URL 或仓库里分享密钥。Chrome 菜单选择“添加到主屏幕 / 安装应用”，安装后从桌面图标打开。查看密钥仍是会话级存储，重新打开会话时可能需要再次输入。
+当前手机入口：`https://shiki-9955hx.tailaed862.ts.net/`。安卓手机须连接同一 Tailnet，在 Chrome 打开并输入本机 `runtime/receiver/viewer.key` 中的查看密钥；不要在聊天、URL 或仓库里分享密钥。Chrome 菜单选择“添加到主屏幕 / 安装应用”，安装后从桌面图标打开。查看密钥保存在当前浏览器或 PWA 的本机存储中，关闭后保留；在设置中使用“清除本机配对”删除保存的密钥。
 
 本机 Tailscale Serve 在私网 443 端口提供自动续期的可信 HTTPS，反向代理到 `127.0.0.1:8765`。没有启用 Funnel。3600 已独立配对并通过同一 HTTPS 地址上报；两端设备 token 各自保存在私有运行目录。
 

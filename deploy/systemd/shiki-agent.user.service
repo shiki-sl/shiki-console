@@ -1,0 +1,14 @@
+[Unit]
+Description=SHIKI read-only monitoring agent (user service)
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/shiki-console
+ExecStart=/usr/bin/python3 -m shiki agent --config %h/.local/state/shiki-console/agent.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

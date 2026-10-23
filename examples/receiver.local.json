@@ -1,0 +1,49 @@
+{
+  "receiver": {
+    "id": "main",
+    "name": "我的接收端",
+    "site": "本地"
+  },
+  "listen": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "allowed_hosts": ["127.0.0.1:8765", "localhost:8765"],
+    "allowed_origins": ["http://127.0.0.1:8765", "http://localhost:8765"],
+    "tls_cert": null,
+    "tls_key": null
+  },
+  "fresh_seconds": 90,
+  "offline_seconds": 300,
+  "update_fresh_seconds": 172800,
+  "max_clock_skew_seconds": 120,
+  "max_sample_age_seconds": 300,
+  "inventory": [
+    {
+      "id": "local",
+      "name": "我的 Linux 电脑",
+      "site": "本地",
+      "mobility": "fixed",
+      "expected_online": true,
+      "update_managed": false,
+      "required_services": [],
+      "required_telemetry": ["cpu", "memory", "disks"],
+      "thresholds": {
+        "cpu_temperature_c": 90,
+        "gpu_temperature_c": 90,
+        "memory_percent": 95,
+        "disk_percent": 90
+      },
+      "apps": []
+    }
+  ],
+  "receivers": [
+    {
+      "id": "main",
+      "name": "我的接收端",
+      "site": "本地",
+      "url": "http://127.0.0.1:8765",
+      "role": "primary",
+      "state": "active"
+    }
+  ]
+}
