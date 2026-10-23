@@ -145,6 +145,17 @@ def fields(source, specs):
     return {key: fn(source.get(key)) for key, fn in specs.items()}
 
 
+def ip_addresses(value):
+    result = []
+    for item in bounded_list(value, 8):
+        if not isinstance(item, str) or len(item) > 64 or '%' in item:
+            raise ValueError('invalid IP address')
+        address = str(ipaddress.ip_address(item))
+        if address not in result:
+            result.append(address)
+    return result
+
+
 def normalize_snapshot(raw):
     """Copy only defined telemetry fields; never retain arbitrary agent input."""
     raw = obj(raw)
@@ -175,6 +186,7 @@ def normalize_snapshot(raw):
         'error': text}) for v in bounded_list(docker.get('containers'), 128)]
     tail = obj(raw.get('tailscale', {}))
     result['tailscale'] = fields(tail, {'status': text, 'online_peers': number, 'error': text})
+    result['tailscale']['ips'] = ip_addresses(tail.get('ips'))
     result['tailscale']['peers'] = [fields(v, {'name': text, 'online': boolean})
         for v in bounded_list(tail.get('peers'), 128)]
     result['codex'] = fields(raw.get('codex', {}), {'gui_running': boolean, 'cli_running': boolean,

@@ -14,7 +14,7 @@ import stat
 import subprocess
 import time
 from urllib.request import build_opener, HTTPRedirectHandler, Request, ProxyHandler
-from .common import MAX_BODY, normalize_snapshot, number, safe_url
+from .common import MAX_BODY, ip_addresses, normalize_snapshot, number, safe_url
 from .workbench import configured_services, workbench_probe
 
 
@@ -337,12 +337,13 @@ def docker_probe(procs, config=None):
 
 
 def tailscale_probe(procs):
-    result = {'status': 'unknown', 'online_peers': None, 'peers': [], 'error': None}
+    result = {'status': 'unknown', 'ips': [], 'online_peers': None, 'peers': [], 'error': None}
     if not process_present(procs, 'tailscaled') or not shutil.which('tailscale'):
         result['error'] = 'Native tailscaled process/client not observable; installation not inferred'
         return result, service('unknown', result['error'])
     try:
         data = json.loads(run(['tailscale', 'status', '--json'], timeout=1.5))
+        result['ips'] = ip_addresses(data.get('TailscaleIPs'))
         state = data.get('BackendState')
         result['status'] = 'ok' if state == 'Running' else 'error'
         peers = list(data.get('Peer', {}).values())[:128]

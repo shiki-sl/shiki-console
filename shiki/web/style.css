@@ -6,3 +6,5 @@
 
 /* Theme controls remain available on every page and at narrow widths. */
 .topbar-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}.theme-toggle{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 13px;border:1px solid var(--line);border-radius:24px;background:var(--panel);color:var(--text);font-size:12px;white-space:nowrap}.theme-toggle svg{width:18px;height:18px}.theme-moon{display:none}:root[data-theme="light"] .theme-sun{display:none}:root[data-theme="light"] .theme-moon{display:block}.theme-toggle:hover,.icon-button:hover{background:var(--raised)}@media(max-width:380px){.brand small{font-size:7px;letter-spacing:.8px}.topbar-actions{gap:7px}.theme-toggle{padding-inline:10px;gap:5px}}
+
+.network-address{font-size:11px;margin:0 0 16px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
